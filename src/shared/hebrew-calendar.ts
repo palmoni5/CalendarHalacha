@@ -21,7 +21,7 @@
  *     ב-fallback הם תמיד ריקים.
  */
 
-/// <reference path="../../../otzaria/lib/plugins/sdk/otzaria_plugin.d.ts" />
+/// <reference path="../../types/otzaria_plugin.d.ts" />
 
 export interface HolidayLabel {
   text: string;

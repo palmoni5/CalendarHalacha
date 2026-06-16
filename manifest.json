@@ -9,13 +9,16 @@
   "entrypoint": "dist/index.html",
   "minAppVersion": "0.9.0",
   "sdkVersion": "1.x",
+  "stability": "stable",
   "permissions": [
     "calendar.read",
     "ui.feedback",
     "app.user_email.read",
     "feedback.send_email",
     "plugin.storage.read",
-    "plugin.storage.write"
+    "plugin.storage.write",
+    "events.subscribe:theme.changed",
+    "events.subscribe:calendar.date_changed"
   ],
   "network": {
     "enabled": false,
@@ -26,7 +29,7 @@
       "title": "לוח הלכתי",
       "order": 100,
       "defaultPinned": true,
-      "iconCodepoint": 983685
+      "iconName": "calendar_24_regular"
     }
   }
 }

@@ -10,7 +10,7 @@
  * אירועים זמניים (sessions, popovers) **לא** נשמרים — רק נתונים עסקיים.
  */
 
-/// <reference path="../../../../otzaria/lib/plugins/sdk/otzaria_plugin.d.ts" />
+/// <reference path="../../../types/otzaria_plugin.d.ts" />
 
 import type {
   ComputedEvent,

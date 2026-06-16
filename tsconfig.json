@@ -19,7 +19,7 @@
   "include": [
     "src/**/*",
     "vite.config.ts",
-    "../otzaria/lib/plugins/sdk/otzaria_plugin.d.ts"
+    "types/otzaria_plugin.d.ts"
   ],
   "exclude": ["node_modules", "dist"]
 }

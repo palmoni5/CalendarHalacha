@@ -1,4 +1,4 @@
-/// <reference path="../../otzaria/lib/plugins/sdk/otzaria_plugin.d.ts" />
+/// <reference path="../types/otzaria_plugin.d.ts" />
 
 import {
   HEBREW_DAY_NAMES,
@@ -1020,17 +1020,10 @@ async function initializeState(): Promise<void> {
   }
 }
 
-async function tryLoadThemeFromHost(): Promise<void> {
-  try {
-    const response = await Otzaria.call<ThemeData>('app.getTheme');
-    if (response.success && response.data) {
-      applyTheme(response.data);
-      return;
-    }
-  } catch (error) {
-    console.error('app.getTheme failed', error);
-  }
-
+// ה-theme מגיע תמיד ב-`plugin.boot` (ראה ה-handler למטה) — אין לקרוא ל-`app.getTheme`
+// ידנית בטעינה (וגם דורש הרשאת `app.info.read`). פונקציה זו רק מחילה theme ברירת-מחדל
+// כרשת ביטחון לסביבות שבהן boot לא נשא theme (למשל stub בדפדפן).
+function applyFallbackTheme(): void {
   if (!state.theme) {
     applyTheme({
       mode: 'light',
@@ -1067,7 +1060,7 @@ async function initializeApp(bootTheme?: ThemeData): Promise<void> {
   if (bootTheme) {
     applyTheme(bootTheme);
   } else {
-    await tryLoadThemeFromHost();
+    applyFallbackTheme();
   }
 
   if (IS_DEV_MODE) {
