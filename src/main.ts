@@ -578,6 +578,7 @@ function attachShellListeners(): void {
 
   document.getElementById('nav-prev')?.addEventListener('click', () => movePeriod(-1));
   document.getElementById('nav-next')?.addEventListener('click', () => movePeriod(1));
+  document.addEventListener('keydown', handleArrowNavigation);
   document.getElementById('today-button')?.addEventListener('click', jumpToToday);
   document.getElementById('jump-today')?.addEventListener('click', openJumpDialog);
   document.getElementById('events-toggle')?.addEventListener('click', toggleEventsPanel);
@@ -899,6 +900,44 @@ function jumpToToday(): void {
   state.selectedDate = today;
   state.anchorDate = today;
   renderCalendar();
+}
+
+/** מזיז את היום הנבחר ב-[days] ימים. התצוגה עוקבת כשחוצים חודש. */
+function moveSelectedByDays(days: number): void {
+  const next = stripTime(addDays(state.selectedDate, days));
+  state.selectedDate = next;
+  state.anchorDate = next;
+  void renderCalendar();
+}
+
+/** האם פתוח כעת דיאלוג/overlay שצריך לבלוע את ניווט המקלדת. */
+function isModalOpen(): boolean {
+  const dialogIds = ['jump-dialog', 'about-dialog', 'feedback-dialog'];
+  if (dialogIds.some((id) => {
+    const el = document.getElementById(id);
+    return el != null && !el.hidden;
+  })) {
+    return true;
+  }
+  return document.querySelector('create-event-dialog, consultation-flow') != null;
+}
+
+/** ניווט בחיצים: שמאל/ימין = יום קדימה/אחורה (RTL), מעלה/מטה = שבוע. */
+function handleArrowNavigation(e: KeyboardEvent): void {
+  if (isModalOpen()) return;
+  const tag = (document.activeElement?.tagName ?? '').toLowerCase();
+  if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
+
+  let days: number;
+  switch (e.key) {
+    case 'ArrowLeft': days = 1; break;
+    case 'ArrowRight': days = -1; break;
+    case 'ArrowUp': days = -7; break;
+    case 'ArrowDown': days = 7; break;
+    default: return;
+  }
+  e.preventDefault();
+  moveSelectedByDays(days);
 }
 
 const HEBREW_MONTH_LABELS = [
