@@ -61,6 +61,9 @@ export class CreateEventDialog extends LitElement {
   @query('dialog') private dialogEl!: HTMLDialogElement;
 
   static styles = css`
+    *, *::before, *::after {
+      box-sizing: border-box;
+    }
     :host { direction: rtl; }
 
     dialog {

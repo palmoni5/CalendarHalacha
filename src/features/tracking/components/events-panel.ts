@@ -53,6 +53,9 @@ export class CalendarEventsPanel extends LitElement {
   private unsubscribe: (() => void) | null = null;
 
   static styles = css`
+    *, *::before, *::after {
+      box-sizing: border-box;
+    }
     :host {
       display: flex;
       flex-direction: column;

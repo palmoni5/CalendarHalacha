@@ -49,6 +49,9 @@ export class DayTrackingLayer extends LitElement {
   private unsubscribe: (() => void) | null = null;
 
   static styles = css`
+    *, *::before, *::after {
+      box-sizing: border-box;
+    }
     :host {
       position: absolute;
       inset: 0;

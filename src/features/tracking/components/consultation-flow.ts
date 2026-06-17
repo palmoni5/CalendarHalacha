@@ -57,6 +57,9 @@ export class ConsultationFlow extends LitElement {
   private cancelled = false;
 
   static styles = css`
+    *, *::before, *::after {
+      box-sizing: border-box;
+    }
     :host {
       position: fixed;
       inset: 0;

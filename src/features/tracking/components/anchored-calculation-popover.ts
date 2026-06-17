@@ -37,6 +37,9 @@ export class AnchoredCalculationPopover extends LitElement {
   };
 
   static styles = css`
+    *, *::before, *::after {
+      box-sizing: border-box;
+    }
     :host {
       position: fixed;
       inset: 0;
