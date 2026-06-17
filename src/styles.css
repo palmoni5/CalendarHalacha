@@ -30,7 +30,7 @@
   --outline-variant: rgba(48, 36, 23, 0.14);
   --today-fill: rgba(155, 111, 18, 0.16);
   --special-fill: rgba(245, 229, 200, 0.62);
-  --shadow: 0 8px 24px rgba(93, 70, 27, 0.10);
+  --shadow: 0 2px 10px rgba(93, 70, 27, 0.08);
 }
 
 * {
@@ -67,17 +67,17 @@ textarea {
 .calendar-shell {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
-  gap: 12px;
+  gap: 8px;
   width: 100%;
   height: 100%;
-  padding: 14px 18px 18px;
+  padding: 10px 12px 12px;
 }
 
 /* אזור התוכן: לוח (ימין) + חלונית אירועים (שמאל ב-RTL) */
 .calendar-content {
   display: flex;
   flex-direction: row;
-  gap: 14px;
+  gap: 10px;
   min-height: 0;
 }
 
@@ -98,13 +98,13 @@ textarea {
 }
 
 .events-panel {
-  flex: 0 0 300px;
+  flex: 0 0 264px;
   min-width: 0;
   border: 1px solid var(--outline-variant);
-  border-radius: 18px;
+  border-radius: 12px;
   background: var(--surface);
   box-shadow: var(--shadow);
-  padding: 14px 12px 12px;
+  padding: 12px 10px 10px;
   overflow: hidden;
 }
 
@@ -116,10 +116,10 @@ textarea {
 .calendar-toolbar {
   display: flex;
   align-items: center;
-  min-height: 62px;
-  padding: 12px 16px;
+  min-height: 50px;
+  padding: 7px 12px;
   border: 1px solid var(--outline-variant);
-  border-radius: 22px;
+  border-radius: 14px;
   background: linear-gradient(180deg, var(--secondary-container), var(--surface));
   box-shadow: var(--shadow);
 }
@@ -153,7 +153,7 @@ textarea {
 
 .toolbar-title {
   margin: 0;
-  font-size: 1.18rem;
+  font-size: 1.06rem;
   font-weight: 700;
   text-align: center;
   white-space: nowrap;
@@ -173,10 +173,10 @@ textarea {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 42px;
-  height: 42px;
+  width: 36px;
+  height: 36px;
   border: 1px solid transparent;
-  border-radius: 14px;
+  border-radius: 10px;
   background: transparent;
   color: var(--on-surface);
 }
@@ -202,9 +202,9 @@ textarea {
 }
 
 .pill-button {
-  min-width: 74px;
-  height: 42px;
-  padding: 0 18px;
+  min-width: 62px;
+  height: 36px;
+  padding: 0 14px;
   border-radius: 999px;
   background: var(--primary);
   color: var(--surface);
@@ -395,10 +395,10 @@ textarea {
   gap: 16px;
   min-width: 320px;
   max-width: 90vw;
-  padding: 24px;
-  border-radius: 24px;
+  padding: 20px;
+  border-radius: 16px;
   background: var(--surface);
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.22);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.18);
   direction: rtl;
 }
 
@@ -602,7 +602,7 @@ textarea {
 }
 
 .calendar-grid-month {
-  grid-auto-rows: minmax(104px, 1fr);
+  grid-auto-rows: minmax(84px, 1fr);
 }
 
 .calendar-cell {
