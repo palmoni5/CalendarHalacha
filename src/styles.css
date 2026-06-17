@@ -66,11 +66,51 @@ textarea {
 
 .calendar-shell {
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
   gap: 12px;
   width: 100%;
   height: 100%;
   padding: 14px 18px 18px;
+}
+
+/* אזור התוכן: לוח (ימין) + חלונית אירועים (שמאל ב-RTL) */
+.calendar-content {
+  display: flex;
+  flex-direction: row;
+  gap: 14px;
+  min-height: 0;
+}
+
+.calendar-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+}
+
+/* הלוח עצמו — רוחבו מוגבל (max-width נקבע ב-JS לפי הגובה) וממורכז */
+.calendar-board {
+  width: 100%;
+  min-width: 0;
+  margin-inline: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.events-panel {
+  flex: 0 0 300px;
+  min-width: 0;
+  border: 1px solid var(--outline-variant);
+  border-radius: 18px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  padding: 14px 12px 12px;
+  overflow: hidden;
+}
+
+/* כשהחלונית סגורה — מסתירים אותה והלוח מתפרס על כל הרוחב */
+.calendar-content:not(.events-open) .events-panel {
+  display: none;
 }
 
 .calendar-toolbar {
@@ -123,8 +163,7 @@ textarea {
 }
 
 .icon-button,
-.pill-button,
-.view-button {
+.pill-button {
   border: 0;
   cursor: pointer;
   transition: background-color 140ms ease, color 140ms ease, border-color 140ms ease, transform 140ms ease;
@@ -143,7 +182,6 @@ textarea {
 }
 
 .icon-button:hover,
-.view-button:hover,
 .pill-button:hover {
   transform: translateY(-1px);
 }
@@ -157,6 +195,12 @@ textarea {
   background: var(--surface);
 }
 
+.icon-button.is-active {
+  background: var(--secondary-container);
+  border-color: var(--primary);
+  color: var(--on-secondary-container);
+}
+
 .pill-button {
   min-width: 74px;
   height: 42px;
@@ -165,31 +209,6 @@ textarea {
   background: var(--primary);
   color: var(--surface);
   font-weight: 700;
-}
-
-.view-switch {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px;
-  border: 1px solid var(--outline-variant);
-  border-radius: 999px;
-  background: var(--surface);
-}
-
-.view-button {
-  min-width: 60px;
-  height: 34px;
-  padding: 0 12px;
-  border-radius: 999px;
-  background: transparent;
-  color: var(--on-surface-variant);
-  font-weight: 600;
-}
-
-.view-button.is-active {
-  background: var(--secondary-container);
-  color: var(--on-secondary-container);
 }
 
 /* ─── תפריט 3 נקודות ─── */
@@ -559,7 +578,7 @@ textarea {
 .weekday-row {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
-  gap: 6px;
+  gap: 4px;
   padding-inline: 2px;
 }
 
@@ -572,9 +591,10 @@ textarea {
 }
 
 .calendar-grid {
+  flex: 1 1 auto;
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
-  gap: 6px;
+  gap: 4px;
   min-height: 0;
   /* ה-body הוא overflow:hidden (shell בגובה קבוע); אזור התוכן חייב לגלול
      בעצמו כדי שלא ייחתך בחלונות WebView נמוכים. */
@@ -585,10 +605,6 @@ textarea {
   grid-auto-rows: minmax(104px, 1fr);
 }
 
-.calendar-grid-week {
-  grid-template-rows: minmax(128px, 1fr);
-}
-
 .calendar-cell {
   position: relative;
   overflow: hidden;
@@ -596,22 +612,23 @@ textarea {
   flex-direction: column;
   align-items: stretch;
   min-width: 0;
-  padding: 10px 10px 8px;
+  padding: 5px 6px;
   border: 1px solid var(--outline-variant);
-  border-radius: 12px;
+  border-radius: 8px;
   background: var(--surface);
   color: var(--on-surface);
   text-align: right;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25);
+  transition: box-shadow 140ms ease, border-color 140ms ease, background-color 140ms ease;
 }
 
 .calendar-cell:hover {
   border-color: var(--outline);
   background: var(--surface-container);
+  box-shadow: 0 2px 6px var(--shadow);
 }
 
 .calendar-cell.is-outside {
-  opacity: 0.46;
+  opacity: 0.4;
 }
 
 .calendar-cell.is-special:not(.is-selected):not(.is-today) {
@@ -630,37 +647,44 @@ textarea {
   color: var(--on-primary-container);
 }
 
-.cell-corner {
-  position: absolute;
-  top: 8px;
-}
-
-.cell-corner-hebrew {
-  right: 8px;
+/* כותרת התא: מספר לועזי בהתחלה (שמאל ב-RTL), יום עברי בסוף (ימין) */
+.cell-header {
   display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 2px;
+  align-items: flex-start;
+  gap: 4px;
 }
 
-.cell-corner-gregorian {
-  left: 8px;
-  font-size: 0.72rem;
+.cell-greg-day {
+  margin-inline-end: auto;
+  font-size: 0.66rem;
+  line-height: 1.1;
   color: var(--on-surface-variant);
 }
 
-.calendar-cell.is-selected .cell-corner-gregorian {
+.calendar-cell.is-selected .cell-greg-day {
   color: var(--on-primary-container-muted);
 }
 
+.cell-day-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1px;
+}
+
 .cell-hebrew-day {
-  font-size: 0.96rem;
+  font-size: 0.92rem;
+  font-weight: 400;
+  line-height: 1.1;
+}
+
+.calendar-cell.is-selected .cell-hebrew-day,
+.calendar-cell.is-today .cell-hebrew-day {
   font-weight: 700;
-  line-height: 1;
 }
 
 .cell-month-name {
-  font-size: 0.62rem;
+  font-size: 0.55rem;
   color: var(--on-surface-variant);
 }
 
@@ -668,14 +692,16 @@ textarea {
   color: var(--on-primary-container-muted);
 }
 
+/* גוף התא: התוויות צמודות לראש התא, ממורכזות אופקית */
 .cell-body {
   display: flex;
   flex: 1;
   flex-direction: column;
-  justify-content: center;
-  gap: 4px;
-  min-height: 68px;
-  padding-top: 22px;
+  align-items: center;
+  gap: 1px;
+  margin-top: 5px;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .cell-label {
@@ -683,8 +709,9 @@ textarea {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 0.78rem;
-  font-weight: 600;
+  text-align: center;
+  font-size: 0.72rem;
+  font-weight: 500;
 }
 
 .cell-label-taanit {
@@ -741,13 +768,23 @@ textarea {
   }
 
   .calendar-cell {
-    padding: 6px 6px 4px;
-    border-radius: 10px;
+    padding: 4px 5px;
+    border-radius: 8px;
   }
 
   .cell-body {
-    min-height: 0;
-    padding-top: 18px;
+    margin-top: 3px;
+  }
+
+  .events-panel {
+    flex-basis: 240px;
+  }
+}
+
+/* במסך צר אין מקום לחלונית לצד הלוח — מסתירים אותה לחלוטין */
+@media (max-width: 700px) {
+  .events-panel {
+    display: none;
   }
 }
 

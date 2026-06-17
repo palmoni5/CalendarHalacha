@@ -23,7 +23,15 @@ import type { HebrewDate, Onah, UserEvent } from '../tracking-types.js';
 import { loadUiCopy } from '../tracking-rules-loader.js';
 import { trackingStore } from '../tracking-store.js';
 import { hebrewToGregKey, hydrateHebrewDate } from '../tracking-utils.js';
-import { toHebrewNumber, formatHebrewYear } from '../../../shared/hebrew-calendar.js';
+import {
+  toHebrewNumber,
+  formatHebrewYear,
+  hebrewDaysInMonth,
+  hebrewMonthsInYear,
+  getHebrewMonthName,
+  isHebrewLeapYear,
+  hebrewToDate,
+} from '../../../shared/hebrew-calendar.js';
 
 @customElement('create-event-dialog')
 export class CreateEventDialog extends LitElement {
@@ -34,9 +42,21 @@ export class CreateEventDialog extends LitElement {
   /** מפתח גרגוריאני להצגה בלבד (YYYY-MM-DD). אם לא מסופק, מחושב. */
   @property({ type: String }) gregorianDateKey = '';
 
+  /** במצב עריכה — אירוע המשתמש הקיים. אם null זהו מצב יצירה. */
+  @property({ attribute: false }) existingEvent: UserEvent | null = null;
+
   @state() private onah: Onah | null = null;
   @state() private notes = '';
   @state() private weekday = 0;
+
+  /** שדות עריכת התאריך העברי (זמינים גם ביצירה וגם בעריכה). */
+  @state() private editYear = 0;
+  @state() private editMonth = 0;
+  @state() private editDay = 0;
+
+  private get isEdit(): boolean {
+    return this.existingEvent !== null;
+  }
 
   @query('dialog') private dialogEl!: HTMLDialogElement;
 
@@ -78,6 +98,30 @@ export class CreateEventDialog extends LitElement {
     .question {
       font-size: 14px;
       font-weight: 500;
+    }
+    .date-editor {
+      display: flex;
+      gap: 8px;
+    }
+    .date-editor select,
+    .date-editor input {
+      flex: 1;
+      min-width: 0;
+      padding: 9px 10px;
+      border-radius: 8px;
+      border: 1px solid var(--outline-variant, #d8d2c1);
+      background: var(--surface-container, rgba(0, 0, 0, 0.03));
+      color: var(--on-surface, #1a1a1a);
+      font-family: inherit;
+      font-size: 14px;
+    }
+    .date-editor .field-day { flex: 0 0 72px; }
+    .date-editor .field-year { flex: 0 0 96px; }
+    .date-editor select:focus,
+    .date-editor input:focus {
+      outline: 2px solid var(--primary, #9b6f12);
+      outline-offset: 0;
+      border-color: transparent;
     }
     .onah-group {
       display: flex;
@@ -161,19 +205,68 @@ export class CreateEventDialog extends LitElement {
 
   connectedCallback(): void {
     super.connectedCallback();
-    if (this.hebrewDate && !this.gregorianDateKey) {
-      try {
-        this.gregorianDateKey = hebrewToGregKey(hydrateHebrewDate(this.hebrewDate));
-      } catch {
-        this.gregorianDateKey = '';
-      }
+    // מצב עריכה — טוענים את ערכי האירוע הקיים.
+    if (this.existingEvent) {
+      this.onah = this.existingEvent.onah;
+      this.notes = this.existingEvent.notes ?? '';
+      this.hebrewDate = {
+        year: this.existingEvent.hebrewDate.year,
+        month: this.existingEvent.hebrewDate.month,
+        day: this.existingEvent.hebrewDate.day,
+      };
     }
-    if (this.gregorianDateKey) {
-      const [y, m, d] = this.gregorianDateKey.split('-').map((s) => parseInt(s, 10));
-      if (y && m && d) {
-        this.weekday = new Date(y, m - 1, d).getDay();
-      }
+    // איתחול שדות עריכת התאריך מתוך התאריך הנתון.
+    if (this.hebrewDate) {
+      this.editYear = this.hebrewDate.year;
+      this.editMonth = this.hebrewDate.month;
+      this.editDay = this.hebrewDate.day;
     }
+    this.recomputeFromEditFields();
+  }
+
+  /** מחשב מחדש את `hebrewDate`, `gregorianDateKey` ו-`weekday` משדות העריכה. */
+  private recomputeFromEditFields(): void {
+    if (!this.editYear || !this.editMonth || !this.editDay) return;
+    const hd = hydrateHebrewDate({
+      year: this.editYear,
+      month: this.editMonth,
+      day: this.editDay,
+    });
+    this.hebrewDate = { year: hd.year, month: hd.month, day: hd.day };
+    try {
+      this.gregorianDateKey = hebrewToGregKey(hd);
+    } catch {
+      this.gregorianDateKey = '';
+    }
+    const greg = hebrewToDate(hd.year, hd.month, hd.day);
+    if (greg) this.weekday = greg.getDay();
+  }
+
+  private onChangeYear(value: string): void {
+    let y = parseInt(value, 10);
+    if (!Number.isFinite(y) || y <= 0) return;
+    this.editYear = y;
+    this.clampMonthAndDay();
+    this.recomputeFromEditFields();
+  }
+
+  private onChangeMonth(value: string): void {
+    this.editMonth = parseInt(value, 10);
+    this.clampMonthAndDay();
+    this.recomputeFromEditFields();
+  }
+
+  private onChangeDay(value: string): void {
+    this.editDay = parseInt(value, 10);
+    this.recomputeFromEditFields();
+  }
+
+  /** מוודא שהחודש והיום חוקיים אחרי שינוי שנה/חודש (שנה מעוברת, אורך חודש). */
+  private clampMonthAndDay(): void {
+    const months = hebrewMonthsInYear(this.editYear);
+    if (this.editMonth > months) this.editMonth = months;
+    const maxDay = hebrewDaysInMonth(this.editMonth, this.editYear);
+    if (this.editDay > maxDay) this.editDay = maxDay;
   }
 
   protected firstUpdated(): void {
@@ -197,14 +290,29 @@ export class CreateEventDialog extends LitElement {
   private onSave(): void {
     if (!this.hebrewDate || !this.onah) return;
     const hd = hydrateHebrewDate(this.hebrewDate);
-    const created: Omit<UserEvent, 'id' | 'type' | 'createdAt'> = {
+    const fields = {
       hebrewDate: hd,
       onah: this.onah,
       weekday: this.weekday,
       gregorianDateKey: this.gregorianDateKey || hebrewToGregKey(hd),
       notes: this.notes || undefined,
     };
-    const saved = trackingStore.addUserEvent(created);
+
+    if (this.existingEvent) {
+      trackingStore.updateUserEvent(this.existingEvent.id, fields);
+      const updated = trackingStore.getUserEventById(this.existingEvent.id)!;
+      this.dialogEl?.close?.();
+      this.dispatchEvent(
+        new CustomEvent<UserEvent>('event-updated', {
+          detail: updated,
+          bubbles: true,
+          composed: true,
+        }),
+      );
+      return;
+    }
+
+    const saved = trackingStore.addUserEvent(fields);
     this.dialogEl?.close?.();
     this.dispatchEvent(
       new CustomEvent<UserEvent>('event-created', {
@@ -227,9 +335,53 @@ export class CreateEventDialog extends LitElement {
     return `${d}.${m}.${y}`;
   }
 
+  private renderDateEditor() {
+    const leap = isHebrewLeapYear(this.editYear);
+    const monthCount = hebrewMonthsInYear(this.editYear);
+    const dayCount = hebrewDaysInMonth(this.editMonth, this.editYear) || 30;
+    const months = Array.from({ length: monthCount }, (_, i) => i + 1);
+    const days = Array.from({ length: dayCount }, (_, i) => i + 1);
+
+    return html`
+      <div class="question">תאריך</div>
+      <div class="date-editor">
+        <select
+          class="field-day"
+          aria-label="יום"
+          .value=${String(this.editDay)}
+          @change=${(e: Event) => this.onChangeDay((e.target as HTMLSelectElement).value)}
+        >
+          ${days.map(
+            (d) => html`<option value=${d} ?selected=${d === this.editDay}>${toHebrewNumber(d)}</option>`,
+          )}
+        </select>
+        <select
+          aria-label="חודש"
+          .value=${String(this.editMonth)}
+          @change=${(e: Event) => this.onChangeMonth((e.target as HTMLSelectElement).value)}
+        >
+          ${months.map(
+            (m) => html`<option value=${m} ?selected=${m === this.editMonth}>
+              ${getHebrewMonthName(m, leap)}
+            </option>`,
+          )}
+        </select>
+        <input
+          class="field-year"
+          type="number"
+          aria-label="שנה"
+          .value=${String(this.editYear)}
+          @change=${(e: Event) => this.onChangeYear((e.target as HTMLInputElement).value)}
+        />
+      </div>
+    `;
+  }
+
   render() {
     const copy = loadUiCopy().createEvent;
     const canSave = !!this.onah && !!this.hebrewDate;
+    const title = this.isEdit ? 'עריכת אירוע' : copy.title;
+    const saveLabel = this.isEdit ? 'שמור שינויים' : (copy.saveButton ?? 'שמור והתחל חישוב');
 
     return html`
       <dialog
@@ -239,12 +391,13 @@ export class CreateEventDialog extends LitElement {
         }}
         @close=${() => this.close()}
       >
-        <div class="header">${copy.title}</div>
+        <div class="header">${title}</div>
         <div class="date-line">
           ${this.formatHebrewDateLine()}
           ${this.gregorianDateKey ? html` · ${this.formatGregLine()}` : nothing}
         </div>
         <div class="body">
+          ${this.renderDateEditor()}
           <div class="question">${copy.onahLabel}</div>
           <div class="onah-group" role="radiogroup" aria-label=${copy.onahLabel}>
             <button
@@ -280,7 +433,7 @@ export class CreateEventDialog extends LitElement {
             type="button"
             ?disabled=${!canSave}
             @click=${this.onSave}
-          >${copy.saveButton ?? 'שמור והתחל חישוב'}</button>
+          >${saveLabel}</button>
         </div>
       </dialog>
     `;

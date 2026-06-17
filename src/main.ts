@@ -18,14 +18,16 @@ import {
   type TrackingCellInput,
 } from './features/tracking/tracking-renderers.js';
 import './features/tracking/components/create-event-dialog.js';
+import './features/tracking/components/events-panel.js';
 import type { CreateEventDialog } from './features/tracking/components/create-event-dialog.js';
+import type { CalendarEventsPanel } from './features/tracking/components/events-panel.js';
+import { abortActiveFlow } from './features/tracking/tracking-confirmation-flow.js';
 import {
-  startFlowAfterUserEvent,
-  abortActiveFlow,
-} from './features/tracking/tracking-confirmation-flow.js';
+  startConsultation,
+  abortActiveConsultation,
+} from './features/tracking/consultation-orchestrator.js';
 import type { UserEvent as TrackingUserEvent } from './features/tracking/tracking-types.js';
 
-type CalendarView = 'month' | 'week';
 type CalendarDisplay = 'hebrew' | 'gregorian' | 'combined';
 
 interface CalendarCellData {
@@ -65,19 +67,19 @@ interface ThemeData {
 }
 
 interface AppState {
-  view: CalendarView;
   calendarDisplay: CalendarDisplay;
   selectedDate: Date;
   anchorDate: Date;
   theme: ThemeData | null;
+  eventsPanelOpen: boolean;
 }
 
 const state: AppState = {
-  view: 'month',
   calendarDisplay: 'combined',
   selectedDate: stripTime(new Date()),
   anchorDate: startOfMonth(new Date()),
   theme: null,
+  eventsPanelOpen: true,
 };
 
 const GREGORIAN_MONTH_FORMATTER = new Intl.DateTimeFormat('he', { month: 'long' });
@@ -209,6 +211,7 @@ async function handlePasswordSubmit(mode: 'set' | 'verify'): Promise<void> {
 function openCreateEventDialog(date: { year: number; month: number; day: number }): void {
   // ביטול flow קודם אם פתוח (סעיף 12.2).
   abortActiveFlow();
+  abortActiveConsultation();
   // אם כבר יש דיאלוג פתוח, להחליף אותו.
   document.querySelectorAll('create-event-dialog').forEach((el) => el.remove());
 
@@ -217,7 +220,28 @@ function openCreateEventDialog(date: { year: number; month: number; day: number 
   dialog.addEventListener('event-created', (e: Event) => {
     const ce = e as CustomEvent<TrackingUserEvent>;
     dialog.remove();
-    void startFlowAfterUserEvent(ce.detail);
+    void startConsultation(ce.detail);
+  });
+  dialog.addEventListener('dialog-cancelled', () => dialog.remove());
+  document.body.appendChild(dialog);
+}
+
+function openEditEventDialog(eventId: string): void {
+  const existing = trackingStore.getUserEventById(eventId);
+  if (!existing) return;
+
+  abortActiveFlow();
+  abortActiveConsultation();
+  document.querySelectorAll('create-event-dialog').forEach((el) => el.remove());
+
+  const dialog = document.createElement('create-event-dialog') as CreateEventDialog;
+  dialog.existingEvent = existing;
+  dialog.addEventListener('event-updated', (e: Event) => {
+    const ce = e as CustomEvent<TrackingUserEvent>;
+    dialog.remove();
+    // האירועים המחושבים הישנים שנגזרו מאירוע זה אינם תקפים — מסירים ומחשבים מחדש.
+    trackingStore.removeComputedEventsBySource(ce.detail.id);
+    void startConsultation(ce.detail).then(() => renderCalendar());
   });
   dialog.addEventListener('dialog-cancelled', () => dialog.remove());
   document.body.appendChild(dialog);
@@ -229,6 +253,14 @@ function launchMainApp(): void {
   renderShell();
   void initializeState().then(async () => {
     await trackingStore.load();
+    if (IS_DEV_MODE) {
+      // איפוס מהיר לבדיקות: בקונסול הריצו `__resetTracking()` וטענו מחדש.
+      (window as unknown as { __resetTracking?: () => void }).__resetTracking = () => {
+        trackingStore.clearAll();
+        void renderCalendar();
+        console.log('[tracking] נתוני המעקב אופסו');
+      };
+    }
     attachTrackingEventListeners({
       onAddRequested: (date) => openCreateEventDialog(date),
       onMarkerClicked: (detail) => {
@@ -253,10 +285,6 @@ function addDays(date: Date, amount: number): Date {
 
 function addMonths(date: Date, amount: number): Date {
   return new Date(date.getFullYear(), date.getMonth() + amount, 1);
-}
-
-function startOfWeek(date: Date): Date {
-  return addDays(stripTime(date), -stripTime(date).getDay());
 }
 
 function isSameDay(left: Date, right: Date): boolean {
@@ -349,11 +377,6 @@ async function getSelectedDateFromHost(): Promise<Date | null> {
 }
 
 function buildVisibleDates(hebrewMonthStart?: Date, hebrewMonthDays?: number): Date[] {
-  if (state.view === 'week') {
-    const weekStart = startOfWeek(state.selectedDate);
-    return Array.from({ length: 7 }, (_, index) => addDays(weekStart, index));
-  }
-
   const monthStart = (state.calendarDisplay !== 'gregorian' && hebrewMonthStart)
     ? hebrewMonthStart
     : startOfMonth(state.anchorDate);
@@ -392,14 +415,12 @@ async function buildCalendarCells(): Promise<CalendarCellData[]> {
   const hebrewDates = await Promise.all(visibleDates.map((date) => getHebrewDate(date)));
 
   return visibleDates.map((date, index) => {
-    let isOutside = false;
-    if (state.view === 'month') {
-      if (state.calendarDisplay !== 'gregorian') {
-        isOutside = hebrewDates[index].month !== anchorHebrewMonth ||
-                    hebrewDates[index].year !== anchorHebrewYear;
-      } else {
-        isOutside = date.getMonth() !== primaryGregMonth;
-      }
+    let isOutside: boolean;
+    if (state.calendarDisplay !== 'gregorian') {
+      isOutside = hebrewDates[index].month !== anchorHebrewMonth ||
+                  hebrewDates[index].year !== anchorHebrewYear;
+    } else {
+      isOutside = date.getMonth() !== primaryGregMonth;
     }
     return {
       date,
@@ -423,10 +444,9 @@ function renderShell(): void {
     <section class="calendar-shell">
       <header class="calendar-toolbar">
         <div class="toolbar-side toolbar-side-start">
-          <div class="view-switch" role="tablist" aria-label="תצוגת לוח">
-            <button class="view-button" id="view-week" data-view="week" type="button" role="tab" aria-selected="false">שבוע</button>
-            <button class="view-button" id="view-month" data-view="month" type="button" role="tab" aria-selected="true">חודש</button>
-          </div>
+          <button class="icon-button subtle-button" id="events-toggle" type="button" aria-label="חלונית אירועים" aria-pressed="true">
+            <span class="material-icons">event_note</span>
+          </button>
         </div>
 
         <div class="toolbar-nav-group">
@@ -471,8 +491,15 @@ function renderShell(): void {
         </div>
       </header>
 
-      <div class="weekday-row" id="weekday-row"></div>
-      <div class="calendar-grid" id="calendar-grid" aria-live="polite"></div>
+      <div class="calendar-content" id="calendar-content">
+        <div class="calendar-main">
+          <div class="calendar-board" id="calendar-board">
+            <div class="weekday-row" id="weekday-row"></div>
+            <div class="calendar-grid" id="calendar-grid" aria-live="polite"></div>
+          </div>
+        </div>
+        <calendar-events-panel class="events-panel" id="events-panel"></calendar-events-panel>
+      </div>
     </section>
 
     <div class="dialog-backdrop" id="about-dialog" hidden>
@@ -557,16 +584,33 @@ function attachShellListeners(): void {
   document.getElementById('nav-next')?.addEventListener('click', () => movePeriod(1));
   document.getElementById('today-button')?.addEventListener('click', jumpToToday);
   document.getElementById('jump-today')?.addEventListener('click', openJumpDialog);
+  document.getElementById('events-toggle')?.addEventListener('click', toggleEventsPanel);
 
-  document.querySelectorAll<HTMLButtonElement>('.view-button').forEach((button) => {
-    button.addEventListener('click', () => {
-      const nextView = button.dataset.view as CalendarView;
-      if (nextView === state.view) return;
-      state.view = nextView;
-      if (nextView === 'month') state.anchorDate = startOfMonth(state.selectedDate);
-      void renderCalendar();
-    });
+  // קפיצה ליום לאחר לחיצה על פריט בחלונית האירועים — לפי תאריך עברי, כדי
+  // שהתא הנכון יודגש (גם באירועי לילה, שבהם היום הגרגוריאני של השקיעה שונה).
+  document.addEventListener('calendar-jump-to-date', (e) => {
+    const d = (e as CustomEvent<{ year: number; month: number; day: number }>).detail;
+    if (!d?.year || !d?.month || !d?.day) return;
+    void jumpToHebrewDate(d.year, d.month, d.day);
   });
+
+  // עריכת אירוע משתמש מחלונית האירועים
+  document.addEventListener('calendar-edit-event', (e) => {
+    const { eventId } = (e as CustomEvent<{ eventId: string }>).detail ?? {};
+    if (eventId) openEditEventDialog(eventId);
+  });
+
+  // מחיקת אירוע משתמש מחלונית האירועים (כולל האירועים המחושבים שנגזרו ממנו)
+  document.addEventListener('calendar-delete-event', (e) => {
+    const { eventId } = (e as CustomEvent<{ eventId: string }>).detail ?? {};
+    if (!eventId) return;
+    trackingStore.removeComputedEventsBySource(eventId);
+    trackingStore.deleteUserEvent(eventId);
+    void renderCalendar();
+  });
+
+  // התאמת רוחב הלוח לפי גובה האזור (כדי שהתאים לא יימתחו על כל הרוחב)
+  window.addEventListener('resize', updateCalendarSizing);
 
   document.querySelectorAll<HTMLButtonElement>('.menu-display-btn').forEach((button) => {
     button.addEventListener('click', () => {
@@ -784,21 +828,15 @@ function closeFeedbackDialog(): void {
 }
 
 function movePeriod(direction: 1 | -1): void {
-  if (state.view === 'month') {
-    if (state.calendarDisplay !== 'gregorian') {
-      void moveByHebrewMonth(direction);
-      return;
-    }
-    // ניווט לועזי: מעבירים גם את היום הנבחר לאותו יום בחודש הבא/הקודם
-    const next = addMonths(state.selectedDate, direction);
-    // שמירה על יום-בחודש; addMonths כבר מטפל בחפיפת ימים
-    state.selectedDate = next;
-    state.anchorDate = next;
-  } else {
-    const nextSelected = addDays(state.selectedDate, direction * 7);
-    state.selectedDate = nextSelected;
-    state.anchorDate = nextSelected;
+  if (state.calendarDisplay !== 'gregorian') {
+    void moveByHebrewMonth(direction);
+    return;
   }
+  // ניווט לועזי: מעבירים גם את היום הנבחר לאותו יום בחודש הבא/הקודם
+  const next = addMonths(state.selectedDate, direction);
+  // שמירה על יום-בחודש; addMonths כבר מטפל בחפיפת ימים
+  state.selectedDate = next;
+  state.anchorDate = next;
 
   renderCalendar();
 }
@@ -921,17 +959,38 @@ function closeJumpDialog(): void {
 }
 
 function updateToolbarSelection(): void {
-  document.querySelectorAll<HTMLButtonElement>('.view-button').forEach((button) => {
-    const active = button.dataset.view === state.view;
-    button.classList.toggle('is-active', active);
-    button.setAttribute('aria-selected', String(active));
-  });
-
   document.querySelectorAll<HTMLButtonElement>('.menu-display-btn').forEach((button) => {
     const active = button.dataset.display === state.calendarDisplay;
     button.classList.toggle('is-active', active);
     button.setAttribute('aria-selected', String(active));
   });
+
+  const eventsToggle = document.getElementById('events-toggle');
+  eventsToggle?.classList.toggle('is-active', state.eventsPanelOpen);
+  eventsToggle?.setAttribute('aria-pressed', String(state.eventsPanelOpen));
+
+  const content = document.getElementById('calendar-content');
+  content?.classList.toggle('events-open', state.eventsPanelOpen);
+}
+
+function toggleEventsPanel(): void {
+  state.eventsPanelOpen = !state.eventsPanelOpen;
+  updateToolbarSelection();
+  updateCalendarSizing();
+}
+
+/**
+ * מגביל את רוחב לוח החודש ביחס לגובה האזור הזמין, כדי שהתאים לא יימתחו
+ * לכל רוחב המסך (מקביל ל-`_resolveMaxCalendarWidth` בגרסת ה-Dart).
+ */
+function updateCalendarSizing(): void {
+  const board = document.getElementById('calendar-board');
+  const content = document.getElementById('calendar-content');
+  if (!board || !content) return;
+  const height = content.clientHeight;
+  if (height <= 0) return;
+  // יחס ~1.5 בין רוחב לגובה שומר על תאים בפרופורציה נעימה במסכים רחבים.
+  board.style.maxWidth = `${Math.round(height * 1.5)}px`;
 }
 
 function updateTitle(text: string): void {
@@ -951,18 +1010,20 @@ function createDayCell(cell: CalendarCellData): HTMLElement {
   if (cell.isToday) button.classList.add('is-today');
   if (cell.labels.length > 0 || cell.isShabbat) button.classList.add('is-special');
 
+  const isGregorianOnly = state.calendarDisplay === 'gregorian';
+  const primaryDay = isGregorianOnly ? String(cell.date.getDate()) : toHebrewNumber(cell.hebrew.day);
+  const isFirstOfMonth = isGregorianOnly ? cell.date.getDate() === 1 : cell.hebrew.day === 1;
+  const monthName = isGregorianOnly ? GREGORIAN_MONTH_FORMATTER.format(cell.date) : cell.hebrew.monthName;
+
   button.innerHTML = `
-    ${state.calendarDisplay !== 'gregorian' ? `
-    <div class="cell-corner cell-corner-hebrew">
-      <span class="cell-hebrew-day">${toHebrewNumber(cell.hebrew.day)}</span>
-      ${cell.hebrew.day === 1 ? `<span class="cell-month-name">${cell.hebrew.monthName}</span>` : ''}
-    </div>` : `
-    <div class="cell-corner cell-corner-hebrew">
-      <span class="cell-hebrew-day">${cell.date.getDate()}</span>
-      ${cell.date.getDate() === 1 ? `<span class="cell-month-name">${GREGORIAN_MONTH_FORMATTER.format(cell.date)}</span>` : ''}
-    </div>`}
-    ${state.calendarDisplay === 'combined' ? `
-    <div class="cell-corner cell-corner-gregorian">${cell.date.getDate()}</div>` : ''}
+    <div class="cell-header">
+      ${state.calendarDisplay === 'combined'
+        ? `<span class="cell-greg-day">${cell.date.getDate()}</span>` : ''}
+      <span class="cell-day-wrap">
+        <span class="cell-hebrew-day">${primaryDay}</span>
+        ${isFirstOfMonth ? `<span class="cell-month-name">${monthName}</span>` : ''}
+      </span>
+    </div>
     <div class="cell-body">
       ${cell.labels.map((label) => `<div class="cell-label cell-label-${label.kind}">${label.text}</div>`).join('')}
     </div>
@@ -988,7 +1049,7 @@ async function renderCalendar(): Promise<void> {
   const grid = document.getElementById('calendar-grid');
   if (!grid) return;
 
-  grid.className = `calendar-grid calendar-grid-${state.view}`;
+  grid.className = 'calendar-grid calendar-grid-month';
   grid.innerHTML = '<div class="calendar-loading">טוען לוח…</div>';
 
   const selectedHebrew = await getHebrewDate(state.selectedDate);
@@ -1010,6 +1071,19 @@ async function renderCalendar(): Promise<void> {
     });
   });
   mountTrackingLayers(trackingInputs);
+  updateEventsPanel(cells);
+  updateCalendarSizing();
+}
+
+/** מעדכן את חלונית האירועים לחודש העברי המוצג (לפי תא ראשון בתוך הטווח). */
+function updateEventsPanel(cells: CalendarCellData[]): void {
+  const panel = document.getElementById('events-panel') as CalendarEventsPanel | null;
+  if (!panel) return;
+  const primary = cells.find((c) => !c.isOutsidePrimaryRange) ?? cells[0];
+  if (!primary) return;
+  panel.year = primary.hebrew.year;
+  panel.month = primary.hebrew.month;
+  panel.monthName = primary.hebrew.monthName;
 }
 
 async function initializeState(): Promise<void> {
@@ -1096,8 +1170,6 @@ Otzaria.on('calendar.date_changed', (payload: { date: string }) => {
   if (Number.isNaN(nextDate.getTime())) return;
 
   state.selectedDate = nextDate;
-  if (state.view === 'month') {
-    state.anchorDate = startOfMonth(nextDate);
-  }
+  state.anchorDate = startOfMonth(nextDate);
   void renderCalendar();
 });

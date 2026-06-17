@@ -10,9 +10,9 @@
   },
   "confirmations": {
     "vesetHachodesh": "האירוע חל ביום {eventDay} לחודש {eventMonth}, ב{onahLabel}. נראה כי עונת החודש תחול בתאריך {targetDay} בחודש {targetMonth}. האם אתה מאשר?",
-    "onahBeinonit": "האם אתה מאשר לקבוע את ימים {firstTarget} ו-{secondTarget} כעונה בינונית?",
-    "haflagahDistance": "האם אתה מאשר שההפלגה בין האירועים היא {distance} ימים?",
-    "haflagahFuture": "ההפלגה תחול בתאריך {targetDay} בחודש {targetMonth}. האם אתה מאשר?"
+    "onahBeinonit": "נספרו {distance} ימים מהראיה. עונה בינונית תחול ביום {firstTarget} (ה-30) וביום {secondTarget} (ה-31). האם אתה מאשר?",
+    "haflagahDistance": "נמצא שההפרש בין תאריכי הראיה הוא {distance} ימים. האם אתה מאשר?",
+    "haflagahFuture": "בהתבסס על אישורך שההפרש הוא {distance} ימים, יום ההפלגה הוא {targetDay} ב{targetMonth}. האם אתה מאשר?"
   },
   "buttons": {
     "approve": "אשר",

@@ -66,7 +66,8 @@ export type ComputedEventStatus =
   | 'confirmed'
   | 'rejected'
   | 'superseded'
-  | 'expired';
+  | 'expired'
+  | 'frozen'; // ממתין להכרעת משתמש (ראה DecisionTier='requires_user_decision' ו-PendingDecision)
 
 export type PatternKind = 'non_fixed' | 'fixed';
 
@@ -246,6 +247,62 @@ export interface EngineRunResult {
   errors: string[];
 }
 
+// ─── שלוש דרגות הכרעה הלכתית ─────────────────────────────────────────────────
+//
+// כל הלכה משתייכת לאחת משלוש דרגות. ההבחנה מבנית בלבד — היא קובעת מי מכריע
+// ומתי, ולא מה ההלכה (ההלכה עצמה חיה ב-`הלכות.md` וב-JSON).
+//
+//   auto                  — דטרמיניסטי. המנוע מחשב מראש, אין הכרעת אדם.
+//   setting_dependent     — תלוי בהגדרת משתמש שנקבעה *מראש* (טוגל). המנוע
+//                           קורא את ההגדרה ומחשב, בלי לשאול בכל מופע.
+//   requires_user_decision— "מצב קפוא": המנוע מתריע, האירוע נשאר `frozen` עד
+//                           שהמשתמש יכריע פרטנית. ההכרעה רק *בוחרת כלל קיים*
+//                           או מזינה ערך — לעולם אינה קובעת הלכה בקוד.
+
+export type DecisionTier = 'auto' | 'setting_dependent' | 'requires_user_decision';
+
+export type PendingDecisionStatus = 'open' | 'resolved' | 'dismissed';
+
+/**
+ * אפשרות בחירה בהכרעה קפואה. אינה מכריעה הלכה: היא מצביעה על כללים שיחולו
+ * (`appliesRuleIds`) ו/או מזינה ערכים (`setsValues`) — שניהם נתונים, לא לוגיקה.
+ */
+export interface DecisionOption {
+  id: string;
+  copyKey: string;
+  appliesRuleIds?: string[];
+  setsValues?: Record<string, string | number | boolean>;
+}
+
+/**
+ * הכרעה קפואה הממתינה למשתמש (דרגה `requires_user_decision`).
+ *
+ * זרימת התצוגה (לפי הבהרת המשתמש):
+ *   - כל עוד `status === 'open'` — מסומן באזור התראות בלבד, אינו חוסם.
+ *   - **צפייה ועריכה תמיד פתוחות** — גם אם ההכרעה פתוחה וגם אם הגיע מועדה.
+ *     המשתמש עשוי לתקן תאריך שגוי שהזין, מה שעלול לבטל את השאלה עצמה.
+ *   - אם הגיע `blocksNewEntryFromGregKey`/`blocksNewEntryFromOnah` (מועד אירוע
+ *     תלוי) וההכרעה עדיין פתוחה — נחסמת רק **הזנת אירועי משתמש חדשים** עד הכרעה
+ *     (או עד שתיקון נתונים קיימים ייתר את ההכרעה).
+ */
+export interface PendingDecision {
+  id: string;
+  decisionKey: string;            // מזהה לוגי של סוג ההכרעה (מרשם ההכרעות)
+  tier: 'requires_user_decision';
+  titleCopyKey: string;
+  bodyCopyKey: string;            // הצגת הנתונים + השאלה למשתמש
+  options: DecisionOption[];
+  relatedUserEventIds: string[];
+  relatedComputedEventIds: string[];
+  status: PendingDecisionStatus;
+  chosenOptionId?: string;
+  createdAt: string;
+  resolvedAt?: string;
+  /** YYYY-MM-DD; אם הגיע ו-status==='open' → חוסם הזנת נתונים חדשים (לא צפייה/עריכה). */
+  blocksNewEntryFromGregKey?: string;
+  blocksNewEntryFromOnah?: Onah;
+}
+
 // ─── סכמת JSON של כללים ──────────────────────────────────────────────────────
 
 export type RuleKind = 'absolute_date' | 'weekday' | 'interval_from_event';
@@ -315,6 +372,12 @@ export interface HalachicRule {
   createsComputedEvent: boolean;
   reasonCode: string;
   copyKey: string;
+  /** דרגת ההכרעה ההלכתית. ברירת מחדל (אם חסר): 'auto'. */
+  resolutionTier?: DecisionTier;
+  /** מפתח ההגדרה ב-settings — חובה כש-`resolutionTier === 'setting_dependent'`. */
+  settingKey?: string;
+  /** מזהה ההכרעה במרשם — חובה כש-`resolutionTier === 'requires_user_decision'`. */
+  decisionKey?: string;
 }
 
 export interface HalachicRulesFile {

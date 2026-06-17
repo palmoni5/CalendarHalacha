@@ -145,6 +145,19 @@ class TrackingStore {
     });
   }
 
+  /**
+   * הסרה פיזית של אירועים מחושבים שנגזרו מאירוע משתמש מסוים — לשימוש בעת
+   * עריכה/מחיקה של אירוע המשתמש, כשהאירועים המחושבים שלו אינם תקפים עוד
+   * ויש לחשבם מחדש (להבדיל מ-supersession שמתרחש כשאירוע חדש גובר על ישן).
+   */
+  removeComputedEventsBySource(userEventId: string): void {
+    this.update({
+      computedEvents: this.state.computedEvents.filter(
+        (e) => !e.sourceUserEventIds.includes(userEventId),
+      ),
+    });
+  }
+
   getUserEventById(id: string): UserEvent | undefined {
     return this.state.userEvents.find((e) => e.id === id);
   }
@@ -182,6 +195,18 @@ class TrackingStore {
     });
   }
 
+  /** מאפס את כל נתוני המעקב (אירועי משתמש + מחושבים). לשימוש בעיקר בבדיקות. */
+  clearAll(): void {
+    this.update({
+      userEvents: [],
+      computedEvents: [],
+      patternMatches: [],
+      rulePatternStates: [],
+      cleanStreaks: [],
+      onahWindows: [],
+    });
+  }
+
   // ─── שאילתות לפי יום ──────────────────────────────────────────────────────
 
   getUserEventsForHebrewDate(year: number, month: number, day: number): UserEvent[] {
@@ -205,6 +230,36 @@ class TrackingStore {
         e.hebrewDate.year === year &&
         e.hebrewDate.month === month &&
         e.hebrewDate.day === day,
+    );
+  }
+
+  // ─── שאילתות לפי חודש (לפאנל האירועים) ──────────────────────────────────────
+
+  getUserEventsForHebrewMonth(year: number, month: number): UserEvent[] {
+    return this.state.userEvents.filter(
+      (e) => e.hebrewDate.year === year && e.hebrewDate.month === month,
+    );
+  }
+
+  getComputedEventsForHebrewMonth(year: number, month: number): ComputedEvent[] {
+    return this.state.computedEvents.filter(
+      (e) =>
+        e.status !== 'superseded' &&
+        e.status !== 'expired' &&
+        e.hebrewDate.year === year &&
+        e.hebrewDate.month === month,
+    );
+  }
+
+  /** כל אירועי המשתמש השמורים (לטאב "כל האירועים"). */
+  getAllUserEvents(): UserEvent[] {
+    return this.state.userEvents;
+  }
+
+  /** כל האירועים המחושבים הפעילים (ללא superseded/expired). */
+  getAllComputedEvents(): ComputedEvent[] {
+    return this.state.computedEvents.filter(
+      (e) => e.status !== 'superseded' && e.status !== 'expired',
     );
   }
 
