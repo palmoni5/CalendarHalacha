@@ -4,7 +4,6 @@ import {
   HEBREW_DAY_NAMES,
   formatHebrewYear,
   getHebrewDate,
-  hebrewDaysInMonth,
   hebrewToDate,
   isHebrewLeapYear,
   parseHebrewNumber,
@@ -376,19 +375,18 @@ async function getSelectedDateFromHost(): Promise<Date | null> {
   }
 }
 
-function buildVisibleDates(hebrewMonthStart?: Date, hebrewMonthDays?: number): Date[] {
+// רשת קבועה של 6 שבועות (42 תאים) בכל חודש — גובה הלוח עקבי ולא קופץ
+// בין חודשים. השורות העודפות מציגות ימי החודש הסמוך (מעומעמים).
+const CALENDAR_WEEKS = 6;
+
+function buildVisibleDates(hebrewMonthStart?: Date): Date[] {
   const monthStart = (state.calendarDisplay !== 'gregorian' && hebrewMonthStart)
     ? hebrewMonthStart
     : startOfMonth(state.anchorDate);
 
   const firstDay = monthStart.getDay(); // 0=Sunday
-  const daysInMonth = (state.calendarDisplay !== 'gregorian' && hebrewMonthDays)
-    ? hebrewMonthDays
-    : new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0).getDate();
-
-  const neededCells = Math.ceil((firstDay + daysInMonth) / 7) * 7;
   const gridStart = addDays(monthStart, -firstDay);
-  return Array.from({ length: neededCells }, (_, index) => addDays(gridStart, index));
+  return Array.from({ length: CALENDAR_WEEKS * 7 }, (_, index) => addDays(gridStart, index));
 }
 
 async function buildCalendarCells(): Promise<CalendarCellData[]> {
@@ -396,7 +394,6 @@ async function buildCalendarCells(): Promise<CalendarCellData[]> {
 
   // בלוח עברי/משולב — מוצאים את ה-1 לחודש העברי שב-anchorDate
   let hebrewMonthStart: Date | undefined;
-  let hebrewMonthDays: number | undefined;
   let anchorHebrewMonth = -1;
   let anchorHebrewYear = -1;
 
@@ -406,10 +403,9 @@ async function buildCalendarCells(): Promise<CalendarCellData[]> {
     anchorHebrewYear = anchorHebrew.year;
     const first = hebrewToDate(anchorHebrew.year, anchorHebrew.month, 1);
     if (first) hebrewMonthStart = stripTime(first);
-    hebrewMonthDays = hebrewDaysInMonth(anchorHebrew.month, anchorHebrew.year);
   }
 
-  const visibleDates = buildVisibleDates(hebrewMonthStart, hebrewMonthDays);
+  const visibleDates = buildVisibleDates(hebrewMonthStart);
   const primaryGregMonth = state.anchorDate.getMonth();
 
   const hebrewDates = await Promise.all(visibleDates.map((date) => getHebrewDate(date)));
